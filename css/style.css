@@ -328,7 +328,7 @@ td.down{color:var(--red)}
 .mini-tab{padding:4px 10px;border-radius:4px;border:none;background:none;color:var(--text-dim);font-size:11px;font-weight:600;cursor:pointer;transition:var(--transition)}
 .mini-tab:hover{color:var(--text)}
 .mini-tab.active{background:var(--accent);color:#0f1219}
-.tv-mini-container{flex:1;min-height:300px;position:relative}
+.tv-mini-container{flex:1;min-height:440px;position:relative}
 .tv-loading{display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;color:var(--text-muted);font-size:14px}
 
 /* ── TradingView Full Chart ── */
@@ -352,7 +352,7 @@ td.down{color:var(--red)}
 @media(max-width:1024px){
   .account-stats{grid-template-columns:repeat(3,1fr)}
   .trade-main{grid-template-columns:1fr}
-  .tv-mini-container{min-height:250px}
+  .tv-mini-container{min-height:340px}
   .tv-chart-box{height:400px}
 }
 @media(max-width:768px){
@@ -360,7 +360,7 @@ td.down{color:var(--red)}
   .stat-value{font-size:18px}
   .ticket-price-row{flex-wrap:wrap}
   .ticket-bidask{min-width:calc(50% - 6px)}
-  .tv-mini-container{min-height:200px}
+  .tv-mini-container{min-height:280px}
   .tv-chart-box{height:350px}
 }
 @media(max-width:480px){

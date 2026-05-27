@@ -2,10 +2,19 @@ window.FX = window.FX || {};
 
 (function() {
   var feedbackTimer = null;
-  var miniChartWidget = null;
   var _pendingMsg = null;
   var _pendingType = null;
-  var _positionMarkers = [];
+  /* Lightweight Charts mini chart */
+  var _miniLC = null;
+  var _lcMain = null;
+  var _lcSMA = null;
+  var _lcRSI = null;
+  var _lcMACD = null;
+  var _lcSignal = null;
+  var _lcHist = null;
+  var _lcCandles = [];
+  var _lcIntervalMin = 5;
+  var _posLines = [];
 
   function showMsg(msg, type) {
     _pendingMsg = msg;
@@ -132,10 +141,11 @@ window.FX = window.FX || {};
     html += '<div class="mini-chart-header">';
     html +=   '<span class="mini-chart-title" id="mini-chart-title">' + defaultPair + '</span>';
     html +=   '<div class="mini-chart-tfs">';
-    html +=     '<button class="mini-tab active" data-mini-tf="60">1H</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="1">1m</button>';
+    html +=     '<button class="mini-tab active" data-mini-tf="5">5m</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="60">1H</button>';
     html +=     '<button class="mini-tab" data-mini-tf="240">4H</button>';
-    html +=     '<button class="mini-tab" data-mini-tf="D">1D</button>';
-    html +=     '<button class="mini-tab" data-mini-tf="W">1W</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="1440">1D</button>';
     html +=   '</div>';
     html += '</div>';
     html += '<div id="tv-mini-chart" class="tv-mini-container"><div class="tv-loading">Loading chart...</div></div>';
@@ -267,143 +277,292 @@ window.FX = window.FX || {};
     marginEl.innerHTML = 'Est. Margin: <strong>' + FX.App.formatUSD(margin) + '</strong> &middot; Pip Value: <strong>' + FX.App.formatUSD(pip) + '</strong>';
   }
 
-  function clearPositionMarkers() {
-    for (var m = 0; m < _positionMarkers.length; m++) {
-      try { _positionMarkers[m].remove(); } catch(e) {}
-    }
-    _positionMarkers = [];
+  /* ═══════════════════════════════════════════
+     LIGHTWEIGHT CHARTS MINI CHART
+     ═══════════════════════════════════════════ */
+
+  function _seedHash(s) {
+    var h = 0;
+    for (var i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return Math.abs(h);
   }
 
-  function drawPositionMarkers(widget) {
-    clearPositionMarkers();
-    try {
-      var chart = widget.chart();
-      if (!chart) return;
-    } catch(e) { return; }
+  function _lcRand(seed) {
+    var x = Math.sin(seed * 9301 + 49297) * 49297;
+    return Math.abs(x - Math.floor(x));
+  }
 
+  function lcGenCandles(pair, intervalMin, count) {
+    var seed = _seedHash(pair);
+    var rate = FX.App.rates[pair] || 1.0;
+    var now = Math.floor(Date.now() / 1000);
+    var sec = intervalMin * 60;
+    now -= now % sec;
+    var t = now - count * sec;
+    var candles = [];
+    var price = rate * (1 - count * 0.00003);
+    var vol = 0.001;
+    for (var i = 0; i < count; i++) {
+      var r = _lcRand(seed + i * 7);
+      var change = (r - 0.48) * vol;
+      var open = price;
+      var close = open * (1 + change);
+      var hiR = _lcRand(seed + i * 13);
+      var loR = _lcRand(seed + i * 17);
+      candles.push({
+        time: t,
+        open: open,
+        high: Math.max(open, close) * (1 + hiR * vol * 0.3),
+        low: Math.min(open, close) * (1 - loR * vol * 0.3),
+        close: close
+      });
+      price = close;
+      t += sec;
+    }
+    return candles;
+  }
+
+  function lcSMA(candles, period) {
+    var r = [];
+    for (var i = period - 1; i < candles.length; i++) {
+      var sum = 0;
+      for (var j = 0; j < period; j++) sum += candles[i - j].close;
+      r.push({ time: candles[i].time, value: sum / period });
+    }
+    return r;
+  }
+
+  function lcRSI(candles, period) {
+    var r = [];
+    for (var i = period; i < candles.length; i++) {
+      var up = 0, dn = 0;
+      for (var j = i - period; j < i; j++) {
+        var d = candles[j + 1].close - candles[j].close;
+        if (d > 0) up += d; else dn -= d;
+      }
+      var avgUp = up / period, avgDn = dn / period;
+      var rs = avgDn === 0 ? 999 : avgUp / avgDn;
+      r.push({ time: candles[i].time, value: 100 - 100 / (1 + rs) });
+    }
+    return r;
+  }
+
+  function lcMACD(candles) {
+    function ema(data, p) {
+      var k = 2 / (p + 1), e = data[0], r = [];
+      for (var i = 0; i < data.length; i++) {
+        e = data[i] * k + e * (1 - k);
+        r.push(e);
+      }
+      return r;
+    }
+    var c = candles.map(function(d) { return d.close; });
+    var e12 = ema(c, 12), e26 = ema(c, 26);
+    var macd = [], sig = [], hist = [];
+    for (var i = 0; i < c.length; i++) macd.push(e12[i] - e26[i]);
+    var sigLine = ema(macd, 9);
+    for (var i = 0; i < macd.length; i++) {
+      sig.push(sigLine[i]);
+      hist.push({
+        time: candles[i].time,
+        value: macd[i] - sigLine[i],
+        color: macd[i] >= sigLine[i] ? '#22c55e' : '#ef4444'
+      });
+    }
+    return { macd: macd, signal: sig, hist: hist };
+  }
+
+  function clearPosLines() {
+    if (_lcMain) {
+      for (var i = 0; i < _posLines.length; i++) {
+        try { _lcMain.removePriceLine(_posLines[i]); } catch(e) {}
+      }
+    }
+    _posLines = [];
+  }
+
+  function drawPosLines() {
+    clearPosLines();
+    if (!_lcMain) return;
     var positions = FX.Trading.getPositions();
-    var currentPair = document.getElementById('ticket-pair');
-    if (!currentPair) return;
-    var selectedPair = currentPair.value;
-
-    for (var i = 0; i < positions.length; i++) {
-      var pos = positions[i];
-      if (pos.pair !== selectedPair) continue;
-
+    var pairEl = document.getElementById('ticket-pair');
+    if (!pairEl) return;
+    var selected = pairEl.value;
+    for (var p = 0; p < positions.length; p++) {
+      var pos = positions[p];
+      if (pos.pair !== selected) continue;
       var isBuy = pos.side === 'buy';
-      var color = isBuy ? '#22c55e' : '#ef4444';
-      var text = (isBuy ? 'BUY' : 'SELL') + ' ' + pos.lots.toFixed(2);
-
+      var g = '#22c55e', r = '#ef4444';
       try {
-        var line = chart.createPositionLine({
-          price: pos.entryPrice,
-          text: text,
-          quantity: pos.lots.toFixed(2),
-          bodyFont: 'bold 11px Inter',
-          quantityFont: 'bold 10px Inter',
-          bodyBackgroundColor: color,
-          bodyBorderColor: color,
-          quantityBackgroundColor: color,
-          quantityBorderColor: color,
-          lineLength: 20,
-          lineColor: color,
-          bodyTextColor: '#000000',
-          quantityTextColor: '#000000'
-        });
-        _positionMarkers.push(line);
-      } catch(e) {}
-
-      /* Stop Loss line */
+        _posLines.push(_lcMain.createPriceLine({
+          price: pos.entryPrice, color: isBuy ? g : r,
+          lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: (isBuy ? 'BUY' : 'SELL') + ' ' + pos.lots.toFixed(2)
+        }));
+      } catch(e) { console.warn('pos line err:', e); }
       if (pos.stopLoss != null) {
         try {
-          var slLine = chart.createOrderLine({
-            price: pos.stopLoss,
-            text: 'SL',
-            lineLength: 20,
-            lineColor: '#ef4444',
-            bodyBackgroundColor: '#ef4444',
-            bodyBorderColor: '#ef4444',
-            bodyTextColor: '#ffffff',
-            quantity: 'SL',
-            quantityBackgroundColor: '#ef4444',
-            quantityBorderColor: '#ef4444',
-            quantityTextColor: '#ffffff'
-          });
-          _positionMarkers.push(slLine);
+          _posLines.push(_lcMain.createPriceLine({
+            price: pos.stopLoss, color: r,
+            lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title: 'SL'
+          }));
         } catch(e) {}
       }
-
-      /* Take Profit line */
       if (pos.takeProfit != null) {
         try {
-          var tpLine = chart.createOrderLine({
-            price: pos.takeProfit,
-            text: 'TP',
-            lineLength: 20,
-            lineColor: '#22c55e',
-            bodyBackgroundColor: '#22c55e',
-            bodyBorderColor: '#22c55e',
-            bodyTextColor: '#000000',
-            quantity: 'TP',
-            quantityBackgroundColor: '#22c55e',
-            quantityBorderColor: '#22c55e',
-            quantityTextColor: '#000000'
-          });
-          _positionMarkers.push(tpLine);
+          _posLines.push(_lcMain.createPriceLine({
+            price: pos.takeProfit, color: g,
+            lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title: 'TP'
+          }));
         } catch(e) {}
       }
     }
   }
 
   function initMiniChart() {
-    if (typeof TradingView === 'undefined') return;
-    var pair = document.getElementById('ticket-pair');
-    if (!pair) return;
-    var symbol = 'FX:' + pair.value.replace('/', '');
-    var tf = document.querySelector('.mini-tab.active');
-    var interval = tf ? tf.getAttribute('data-mini-tf') : '60';
-
+    if (typeof LightweightCharts === 'undefined') return;
+    var pairEl = document.getElementById('ticket-pair');
+    if (!pairEl) return;
+    destroyMiniChart();
     var container = document.getElementById('tv-mini-chart');
     if (!container) return;
     container.innerHTML = '';
-    clearPositionMarkers();
+    var tf = document.querySelector('.mini-tab.active');
+    _lcIntervalMin = parseInt(tf ? tf.getAttribute('data-mini-tf') : '5', 10);
 
-    if (miniChartWidget) {
-      try { miniChartWidget.remove(); } catch(e) {}
-      miniChartWidget = null;
-    }
+    var pair = pairEl.value;
+    _lcCandles = lcGenCandles(pair, _lcIntervalMin, 200);
 
-    miniChartWidget = new TradingView.widget({
-      container_id: 'tv-mini-chart',
-      symbol: symbol,
-      interval: interval,
-      timezone: 'exchange',
-      theme: 'dark',
-      style: '1',
-      locale: 'en',
-      toolbar_bg: '#161b24',
-      enable_publishing: false,
-      hide_side_toolbar: true,
-      hide_top_toolbar: true,
-      save_image: false,
-      allow_symbol_change: false,
-      studies: [],
-      width: '100%',
-      height: '100%',
-      backgroundColor: '#161b24',
-      gridColor: '#222a38',
-      crosshair_color: '#8b95a5',
-      onChartReady: function() {
-        setTimeout(function() { drawPositionMarkers(miniChartWidget); }, 500);
-      }
+    _miniLC = LightweightCharts.createChart(container, {
+      layout: {
+        background: { color: '#161b24' },
+        textColor: '#8b95a5',
+        fontFamily: 'Inter, sans-serif',
+        fontSize: 10
+      },
+      grid: {
+        vertLines: { color: '#222a38' },
+        horzLines: { color: '#222a38' }
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: '#8b95a5', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#36454f' },
+        horzLine: { color: '#8b95a5', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#36454f' }
+      },
+      rightPriceScale: {
+        borderColor: '#333',
+        scaleMargins: { top: 0.05, bottom: 0.05 }
+      },
+      timeScale: {
+        borderColor: '#333',
+        timeVisible: true,
+        secondsVisible: false
+      },
+      handleScroll: false,
+      handleScale: false
     });
+
+    /* Candlestick */
+    _lcMain = _miniLC.addCandlestickSeries({
+      upColor: '#22c55e', downColor: '#ef4444',
+      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e', wickDownColor: '#ef4444'
+    });
+    _lcMain.setData(_lcCandles);
+
+    /* SMA 20 */
+    _lcSMA = _miniLC.addLineSeries({
+      color: '#f59e0b', lineWidth: 1,
+      priceLineVisible: false, lastValueVisible: false
+    });
+    _lcSMA.setData(lcSMA(_lcCandles, 20));
+
+    /* RSI sub-pane */
+    _lcRSI = _miniLC.addLineSeries({
+      priceScaleId: 'rsi',
+      color: '#a78bfa', lineWidth: 1,
+      priceLineVisible: false, lastValueVisible: true
+    });
+    _lcRSI.setData(lcRSI(_lcCandles, 14));
+    _miniLC.priceScale('rsi').applyOptions({
+      scaleMargins: { top: 0.72, bottom: 0 },
+      visible: true
+    });
+
+    /* MACD sub-pane */
+    var macdData = lcMACD(_lcCandles);
+    _lcHist = _miniLC.addHistogramSeries({
+      priceScaleId: 'macd',
+      priceFormat: { type: 'price', precision: 5 },
+      priceLineVisible: false
+    });
+    _lcHist.setData(macdData.hist);
+    _lcMACD = _miniLC.addLineSeries({
+      priceScaleId: 'macd',
+      color: '#00d4ff', lineWidth: 1,
+      priceLineVisible: false, lastValueVisible: false
+    });
+    var macdLineData = [];
+    for (var i = 0; i < macdData.macd.length; i++) {
+      macdLineData.push({ time: _lcCandles[i].time, value: macdData.macd[i] });
+    }
+    _lcMACD.setData(macdLineData);
+    _lcSignal = _miniLC.addLineSeries({
+      priceScaleId: 'macd',
+      color: '#f59e0b', lineWidth: 1,
+      priceLineVisible: false, lastValueVisible: false
+    });
+    var signalData = [];
+    for (var i = 0; i < macdData.signal.length; i++) {
+      signalData.push({ time: _lcCandles[i].time, value: macdData.signal[i] });
+    }
+    _lcSignal.setData(signalData);
+    _miniLC.priceScale('macd').applyOptions({
+      scaleMargins: { top: 0.86, bottom: 0 },
+      visible: true
+    });
+
+    drawPosLines();
+    _miniLC.timeScale().fitContent();
+  }
+
+  function updateLCData() {
+    if (!_miniLC || !_lcMain || !_lcCandles.length) return;
+    var pairEl = document.getElementById('ticket-pair');
+    if (!pairEl) return;
+    var rate = FX.App.rates[pairEl.value];
+    if (rate == null) return;
+    var last = _lcCandles[_lcCandles.length - 1];
+    last.close = rate;
+    if (rate > last.high) last.high = rate;
+    if (rate < last.low) last.low = rate;
+    _lcMain.update(last);
+    _lcSMA.setData(lcSMA(_lcCandles, 20));
+    _lcRSI.setData(lcRSI(_lcCandles, 14));
+    var macdData = lcMACD(_lcCandles);
+    var histData = [], macdLineData = [], signalData = [];
+    for (var i = 0; i < macdData.hist.length; i++) {
+      histData.push({ time: _lcCandles[i].time, value: macdData.hist[i].value, color: macdData.hist[i].color });
+      macdLineData.push({ time: _lcCandles[i].time, value: macdData.macd[i] });
+      signalData.push({ time: _lcCandles[i].time, value: macdData.signal[i] });
+    }
+    _lcHist.setData(histData);
+    _lcMACD.setData(macdLineData);
+    _lcSignal.setData(signalData);
+    drawPosLines();
   }
 
   function destroyMiniChart() {
-    if (miniChartWidget) {
-      try { miniChartWidget.remove(); } catch(e) {}
-      miniChartWidget = null;
+    clearPosLines();
+    if (_miniLC) {
+      try { _miniLC.remove(); } catch(e) {}
     }
+    _miniLC = null; _lcMain = null; _lcSMA = null;
+    _lcRSI = null; _lcMACD = null; _lcSignal = null; _lcHist = null;
+    _lcCandles = [];
   }
 
   function bindEvents() {
@@ -541,12 +700,7 @@ window.FX = window.FX || {};
       updateBidAsk();
       elapsed += 5;
       if (elapsed <= 15) updateMarginEstimate();
-      /* Refresh position markers if widget is ready */
-      if (miniChartWidget) {
-        try {
-          if (miniChartWidget.chart()) drawPositionMarkers(miniChartWidget);
-        } catch(e) {}
-      }
+      updateLCData();
     }, 5000);
   }
 
