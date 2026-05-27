@@ -346,4 +346,10 @@ window.FX = window.FX || {};
       }
     }
   };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { FX.App.init(); });
+  } else {
+    FX.App.init();
+  }
 })();
