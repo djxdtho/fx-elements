@@ -8,10 +8,12 @@ window.FX = window.FX || {};
   var _miniLC = null;
   var _lcMain = null;
   var _lcSMA = null;
-  var _lcRSI = null;
-  var _lcMACD = null;
-  var _lcSignal = null;
-  var _lcHist = null;
+  var _lcRSIChart = null;
+  var _lcRSISeries = null;
+  var _lcMACDChart = null;
+  var _lcMACDLineSeries = null;
+  var _lcSignalSeries = null;
+  var _lcHistSeries = null;
   var _lcCandles = [];
   var _lcIntervalMin = 5;
   var _posLines = [];
@@ -524,10 +526,6 @@ window.FX = window.FX || {};
     drawPosLines();
     _miniLC.timeScale().fitContent();
   }
-
-  var _lcRSISeries = null;
-  var _lcMACDLineSeries = null;
-  var _lcSignalSeries = null;
 
   function updateLCData() {
     if (!_miniLC || !_lcMain || !_lcCandles.length) return;
