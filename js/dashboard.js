@@ -217,6 +217,18 @@ window.FX = window.FX || {};
           var points = generateSparkPoints(seed, 24, w, h);
           drawSparkline(canvas, points, rgb);
         }
+
+        /* Click pair card → open trading page with that pair */
+        var cards = document.querySelectorAll('.card[data-pair]');
+        for (var c = 0; c < cards.length; c++) {
+          (function(card) {
+            card.addEventListener('click', function() {
+              var pair = card.getAttribute('data-pair');
+              FX.App._pendingPair = pair;
+              location.hash = '#trade';
+            });
+          })(cards[c]);
+        }
       }, 50);
     }
   };

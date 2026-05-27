@@ -5,6 +5,7 @@ window.FX = window.FX || {};
   var miniChartWidget = null;
   var _pendingMsg = null;
   var _pendingType = null;
+  var _positionMarkers = [];
 
   function showMsg(msg, type) {
     _pendingMsg = msg;
@@ -53,6 +54,9 @@ window.FX = window.FX || {};
     html += statCard('Margin Level', level.toFixed(2) + '%', level > 100 ? 'up' : 'down');
     html += '</div>';
 
+    /* ──  Demo Account Banner  ── */
+    html += '<div class="demo-banner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> DEMO ACCOUNT — This is a simulated trading environment. No real money involved.</div>';
+
     /* ──  Main Trading Area (ticket + mini chart)  ── */
     html += '<div class="trade-main">';
 
@@ -62,11 +66,13 @@ window.FX = window.FX || {};
     html += '<div id="trade-feedback" class="trade-feedback"></div>';
 
     /* Pair */
+    var defaultPair = FX.App._pendingPair || 'EUR/USD';
+    FX.App._pendingPair = null;
     html += '<div class="ticket-row">';
     html += '<label class="ticket-label">Symbol</label>';
     html += '<select class="input" id="ticket-pair">';
     for (var i = 0; i < pairs.length; i++) {
-      var sel = pairs[i] === 'EUR/USD' ? ' selected' : '';
+      var sel = pairs[i] === defaultPair ? ' selected' : '';
       html += '<option value="' + pairs[i] + '"' + sel + '>' + pairs[i] + '</option>';
     }
     html += '</select>';
@@ -124,7 +130,7 @@ window.FX = window.FX || {};
     /* ──  Mini Chart  ── */
     html += '<div class="mini-chart-wrap">';
     html += '<div class="mini-chart-header">';
-    html +=   '<span class="mini-chart-title" id="mini-chart-title">EUR/USD</span>';
+    html +=   '<span class="mini-chart-title" id="mini-chart-title">' + defaultPair + '</span>';
     html +=   '<div class="mini-chart-tfs">';
     html +=     '<button class="mini-tab active" data-mini-tf="60">1H</button>';
     html +=     '<button class="mini-tab" data-mini-tf="240">4H</button>';
@@ -261,6 +267,94 @@ window.FX = window.FX || {};
     marginEl.innerHTML = 'Est. Margin: <strong>' + FX.App.formatUSD(margin) + '</strong> &middot; Pip Value: <strong>' + FX.App.formatUSD(pip) + '</strong>';
   }
 
+  function clearPositionMarkers() {
+    for (var m = 0; m < _positionMarkers.length; m++) {
+      try { _positionMarkers[m].remove(); } catch(e) {}
+    }
+    _positionMarkers = [];
+  }
+
+  function drawPositionMarkers(widget) {
+    clearPositionMarkers();
+    try {
+      var chart = widget.chart();
+      if (!chart) return;
+    } catch(e) { return; }
+
+    var positions = FX.Trading.getPositions();
+    var currentPair = document.getElementById('ticket-pair');
+    if (!currentPair) return;
+    var selectedPair = currentPair.value;
+
+    for (var i = 0; i < positions.length; i++) {
+      var pos = positions[i];
+      if (pos.pair !== selectedPair) continue;
+
+      var isBuy = pos.side === 'buy';
+      var color = isBuy ? '#22c55e' : '#ef4444';
+      var text = (isBuy ? 'BUY' : 'SELL') + ' ' + pos.lots.toFixed(2);
+
+      try {
+        var line = chart.createPositionLine({
+          price: pos.entryPrice,
+          text: text,
+          quantity: pos.lots.toFixed(2),
+          bodyFont: 'bold 11px Inter',
+          quantityFont: 'bold 10px Inter',
+          bodyBackgroundColor: color,
+          bodyBorderColor: color,
+          quantityBackgroundColor: color,
+          quantityBorderColor: color,
+          lineLength: 20,
+          lineColor: color,
+          bodyTextColor: '#000000',
+          quantityTextColor: '#000000'
+        });
+        _positionMarkers.push(line);
+      } catch(e) {}
+
+      /* Stop Loss line */
+      if (pos.stopLoss != null) {
+        try {
+          var slLine = chart.createOrderLine({
+            price: pos.stopLoss,
+            text: 'SL',
+            lineLength: 20,
+            lineColor: '#ef4444',
+            bodyBackgroundColor: '#ef4444',
+            bodyBorderColor: '#ef4444',
+            bodyTextColor: '#ffffff',
+            quantity: 'SL',
+            quantityBackgroundColor: '#ef4444',
+            quantityBorderColor: '#ef4444',
+            quantityTextColor: '#ffffff'
+          });
+          _positionMarkers.push(slLine);
+        } catch(e) {}
+      }
+
+      /* Take Profit line */
+      if (pos.takeProfit != null) {
+        try {
+          var tpLine = chart.createOrderLine({
+            price: pos.takeProfit,
+            text: 'TP',
+            lineLength: 20,
+            lineColor: '#22c55e',
+            bodyBackgroundColor: '#22c55e',
+            bodyBorderColor: '#22c55e',
+            bodyTextColor: '#000000',
+            quantity: 'TP',
+            quantityBackgroundColor: '#22c55e',
+            quantityBorderColor: '#22c55e',
+            quantityTextColor: '#000000'
+          });
+          _positionMarkers.push(tpLine);
+        } catch(e) {}
+      }
+    }
+  }
+
   function initMiniChart() {
     if (typeof TradingView === 'undefined') return;
     var pair = document.getElementById('ticket-pair');
@@ -272,6 +366,7 @@ window.FX = window.FX || {};
     var container = document.getElementById('tv-mini-chart');
     if (!container) return;
     container.innerHTML = '';
+    clearPositionMarkers();
 
     if (miniChartWidget) {
       try { miniChartWidget.remove(); } catch(e) {}
@@ -298,6 +393,10 @@ window.FX = window.FX || {};
       backgroundColor: '#161b24',
       gridColor: '#222a38',
       crosshair_color: '#8b95a5'
+    });
+
+    miniChartWidget.onChartReady(function() {
+      setTimeout(function() { drawPositionMarkers(miniChartWidget); }, 500);
     });
   }
 
@@ -443,6 +542,12 @@ window.FX = window.FX || {};
       updateBidAsk();
       elapsed += 5;
       if (elapsed <= 15) updateMarginEstimate();
+      /* Refresh position markers if widget is ready */
+      if (miniChartWidget) {
+        try {
+          if (miniChartWidget.chart()) drawPositionMarkers(miniChartWidget);
+        } catch(e) {}
+      }
     }, 5000);
   }
 
