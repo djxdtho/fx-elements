@@ -3,19 +3,30 @@ window.FX = window.FX || {};
 (function() {
   var feedbackTimer = null;
   var miniChartWidget = null;
+  var _pendingMsg = null;
+  var _pendingType = null;
 
   function showMsg(msg, type) {
+    _pendingMsg = msg;
+    _pendingType = type;
+  }
+
+  function flushMsg() {
+    if (!_pendingMsg) return;
     var el = document.getElementById('trade-feedback');
-    if (!el) return;
-    el.textContent = msg;
-    el.className = 'trade-feedback';
-    if (type === 'error') el.classList.add('feedback-error');
-    else el.classList.add('feedback-ok');
-    if (feedbackTimer) clearTimeout(feedbackTimer);
-    feedbackTimer = setTimeout(function() {
-      el.textContent = '';
+    if (el) {
+      el.textContent = _pendingMsg;
       el.className = 'trade-feedback';
-    }, 4000);
+      if (_pendingType === 'error') el.classList.add('feedback-error');
+      else el.classList.add('feedback-ok');
+      if (feedbackTimer) clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(function() {
+        el.textContent = '';
+        el.className = 'trade-feedback';
+      }, 4000);
+    }
+    _pendingMsg = null;
+    _pendingType = null;
   }
 
   function render() {
@@ -196,6 +207,7 @@ window.FX = window.FX || {};
 
     FX.App.render(html);
     bindEvents();
+    flushMsg();
     updateBidAsk();
     updateMarginEstimate();
     initMiniChart();
