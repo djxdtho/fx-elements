@@ -6,10 +6,15 @@ window.FX = window.FX || {};
   var DEFAULT = { balance: 10000, positions: [], history: [], nextId: 1, leverage: 100 };
 
   var JPY_PAIRS = ['USD/JPY', 'EUR/JPY', 'GBP/JPY'];
+  var JPY_PAIRS_SET = { 'USD/JPY': 1, 'EUR/JPY': 1, 'GBP/JPY': 1 };
 
   function load() {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(DEFAULT));
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return JSON.parse(JSON.stringify(DEFAULT));
+      var state = JSON.parse(raw);
+      if (!state.hasOwnProperty('leverage')) state.leverage = 100;
+      return state;
     } catch(e) {
       return JSON.parse(JSON.stringify(DEFAULT));
     }
@@ -42,7 +47,7 @@ window.FX = window.FX || {};
 
   /* Calculate pip value in account currency (USD) */
   function pipValue(pair, lots, rates) {
-    var pip = JPY_PAIRS.indexOf(pair) !== -1 ? 0.01 : 0.0001;
+    var pip = JPY_PAIRS_SET[pair] ? 0.01 : 0.0001;
     var pvQuote = pip * lots * CONTRACT;
     var q = parsePair(pair).to;
     var conv = quoteToUsd(q, rates);
@@ -51,16 +56,19 @@ window.FX = window.FX || {};
 
   /* Calculate required margin in USD */
   function requiredMargin(pair, lots, leverage, entryPrice, rates) {
-    if (!entryPrice) entryPrice = 1;
     var p = parsePair(pair);
-    var notional = lots * CONTRACT * entryPrice;
-    var margin = notional / leverage;
-    /* Convert margin from base currency to USD if needed */
-    if (p.from !== 'USD') {
-      var conv = 1 / quoteToUsd(p.from, rates);
-      margin = margin * (1 / conv);
-    }
-    return margin;
+    var notionalBase = lots * CONTRACT;
+    var marginBase = notionalBase / (leverage || 100);
+    /* Convert margin from base currency to USD */
+    if (p.from === 'USD') return marginBase;
+    var basePair = p.from + '/USD';
+    var baseToUsd = rates ? rates[basePair] : null;
+    if (baseToUsd) return marginBase * baseToUsd;
+    var usdPair = 'USD/' + p.from;
+    var usdToBase = rates ? rates[usdPair] : null;
+    if (usdToBase) return marginBase / usdToBase;
+    /* Fallback */
+    return marginBase * (entryPrice || 1);
   }
 
   /* Calculate P&L in USD given entry, exit, lots, pair */
