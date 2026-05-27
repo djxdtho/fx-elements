@@ -211,6 +211,12 @@ window.FX = window.FX || {};
     updateBidAsk();
     updateMarginEstimate();
     initMiniChart();
+
+    /* Delayed update for rates that load after render */
+    setTimeout(function() {
+      updateBidAsk();
+      updateMarginEstimate();
+    }, 3000);
   }
 
   function statCard(label, value, cls) {
@@ -428,10 +434,30 @@ window.FX = window.FX || {};
     }
   }
 
+  var _pricePoller = null;
+
+  function startPricePolling() {
+    if (_pricePoller) clearInterval(_pricePoller);
+    _pricePoller = setInterval(function() {
+      updateBidAsk();
+    }, 5000);
+  }
+
+  function stopPricePolling() {
+    if (_pricePoller) {
+      clearInterval(_pricePoller);
+      _pricePoller = null;
+    }
+  }
+
   FX.TradingUI = {
-    render: render,
+    render: function() {
+      render();
+      startPricePolling();
+    },
     destroy: function() {
       destroyMiniChart();
+      stopPricePolling();
     }
   };
 })();
