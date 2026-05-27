@@ -392,11 +392,10 @@ window.FX = window.FX || {};
       height: '100%',
       backgroundColor: '#161b24',
       gridColor: '#222a38',
-      crosshair_color: '#8b95a5'
-    });
-
-    miniChartWidget.onChartReady(function() {
-      setTimeout(function() { drawPositionMarkers(miniChartWidget); }, 500);
+      crosshair_color: '#8b95a5',
+      onChartReady: function() {
+        setTimeout(function() { drawPositionMarkers(miniChartWidget); }, 500);
+      }
     });
   }
 
