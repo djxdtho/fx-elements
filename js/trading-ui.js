@@ -1,254 +1,425 @@
 window.FX = window.FX || {};
 
 (function() {
-  function showFeedback(message, type) {
-    var existing = document.querySelector('.trade-feedback');
-    if (existing) existing.remove();
+  var feedbackTimer = null;
+  var miniChartWidget = null;
 
-    var div = document.createElement('div');
-    div.className = 'trade-feedback';
-    div.style.cssText = 'padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;font-size:14px;font-weight:500;animation:fadeIn 0.3s ease';
-
-    if (type === 'error') {
-      div.style.background = 'var(--red-dim)';
-      div.style.color = 'var(--red)';
-      div.style.border = '1px solid rgba(239,68,68,0.2)';
-    } else {
-      div.style.background = 'var(--green-dim)';
-      div.style.color = 'var(--green)';
-      div.style.border = '1px solid rgba(34,197,94,0.2)';
-    }
-
-    div.textContent = message;
-    var content = document.querySelector('.content');
-    if (content) {
-      content.insertBefore(div, content.firstChild);
-    }
-
-    setTimeout(function() {
-      if (div.parentNode) div.remove();
-    }, 3000);
+  function showMsg(msg, type) {
+    var el = document.getElementById('trade-feedback');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'trade-feedback';
+    if (type === 'error') el.classList.add('feedback-error');
+    else el.classList.add('feedback-ok');
+    if (feedbackTimer) clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(function() {
+      el.textContent = '';
+      el.className = 'trade-feedback';
+    }, 4000);
   }
 
   function render() {
     FX.Trading.updatePrices(FX.App.rates);
 
-    var balance = FX.Trading.getBalance();
+    var state = FX.Trading.getState();
+    var balance = state.balance;
     var equity = FX.Trading.getEquity();
-    var positions = FX.Trading.getPositions();
-    var history = FX.Trading.getHistory();
-    var marginUsed = FX.Trading.getMarginUsed();
-    var freeMargin = FX.Trading.getFreeMargin();
-    var defaultPair = FX.App.pairList.length > 0 ? FX.App.pairList[0].symbol : 'EUR/USD';
-    var defaultRate = FX.App.rates[defaultPair];
+    var margin = FX.Trading.getMarginUsed();
+    var free = FX.Trading.getFreeMargin();
+    var level = FX.Trading.getMarginLevel();
+    var positions = state.positions;
+    var history = state.history;
+    var pairs = FX.App.pairList || [];
 
     var html = '';
 
-    html += '<div class="grid-3" style="margin-bottom:24px">' +
-      '<div class="card">' +
-        '<div class="card-title">Balance</div>' +
-        '<div class="card-value">' + FX.App.formatUSD(balance) + '</div>' +
-        '<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Margin Used: ' + FX.App.formatUSD(marginUsed) + '</div>' +
-      '</div>' +
-      '<div class="card">' +
-        '<div class="card-title">Equity</div>' +
-        '<div class="card-value">' + FX.App.formatUSD(equity) + '</div>' +
-        '<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Free Margin: ' + FX.App.formatUSD(freeMargin) + '</div>' +
-      '</div>' +
-      '<div class="card">' +
-        '<div class="card-title">Open Positions</div>' +
-        '<div class="card-value">' + positions.length + '</div>' +
-      '</div>' +
-    '</div>';
+    /* ──  Account Summary  ── */
+    html += '<div class="account-stats">';
+    html += statCard('Balance', FX.App.formatUSD(balance), '');
+    html += statCard('Equity', FX.App.formatUSD(equity), equity >= balance ? 'up' : 'down');
+    html += statCard('Margin', FX.App.formatUSD(margin), '');
+    html += statCard('Free Margin', FX.App.formatUSD(free), free >= 0 ? 'up' : 'down');
+    html += statCard('Margin Level', level.toFixed(2) + '%', level > 100 ? 'up' : 'down');
+    html += '</div>';
 
-    html += '<div class="card" style="margin-bottom:24px">' +
-      '<div class="card-title" style="margin-bottom:16px">New Trade</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-        '<div class="modal-field">' +
-          '<label>Pair</label>' +
-          '<select class="input" id="trade-pair">';
+    /* ──  Main Trading Area (ticket + mini chart)  ── */
+    html += '<div class="trade-main">';
 
-    for (var i = 0; i < FX.App.pairList.length; i++) {
-      var p = FX.App.pairList[i];
-      html += '<option value="' + p.symbol + '">' + p.symbol + '</option>';
+    /* ──  Trade Ticket  ── */
+    html += '<div class="ticket-card">';
+    html += '<div class="ticket-header">New Order</div>';
+    html += '<div id="trade-feedback" class="trade-feedback"></div>';
+
+    /* Pair */
+    html += '<div class="ticket-row">';
+    html += '<label class="ticket-label">Symbol</label>';
+    html += '<select class="input" id="ticket-pair">';
+    for (var i = 0; i < pairs.length; i++) {
+      var sel = pairs[i] === 'EUR/USD' ? ' selected' : '';
+      html += '<option value="' + pairs[i] + '"' + sel + '>' + pairs[i] + '</option>';
     }
+    html += '</select>';
+    html += '</div>';
 
-    html += '</select>' +
-        '</div>' +
-        '<div class="modal-field">' +
-          '<label>Direction</label>' +
-          '<div style="display:flex;gap:8px">' +
-            '<button class="btn btn-sm btn-success" id="trade-buy" style="flex:1">Buy</button>' +
-            '<button class="btn btn-sm btn-danger" id="trade-sell" style="flex:1">Sell</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="modal-field">' +
-          '<label>Size (units)</label>' +
-          '<input type="number" class="input input-num" id="trade-size" value="1000" min="100" step="100">' +
-        '</div>' +
-        '<div class="modal-field">' +
-          '<label>Market Price</label>' +
-          '<div class="input input-num" id="trade-price" style="background:var(--surface-hover);cursor:default;display:flex;align-items:center;height:42px">' +
-            (defaultRate ? FX.App.formatRate(defaultRate) : 'Loading...') +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
+    /* Bid / Ask display */
+    html += '<div class="ticket-price-row">';
+    html += '<div class="ticket-bidask"><span class="bidask-label">Bid</span><span class="bidask-val" id="ticket-bid">—</span></div>';
+    html += '<div class="ticket-bidask"><span class="bidask-label">Ask</span><span class="ticket-ask-val" id="ticket-ask">—</span></div>';
+    html += '<div class="ticket-spread"><span class="bidask-label">Spread</span><span class="bidask-val" id="ticket-spread">—</span></div>';
+    html += '</div>';
 
-    html += '<div class="card" style="margin-bottom:24px">' +
-      '<div class="card-title" style="margin-bottom:16px">Open Positions</div>';
+    /* Lot size */
+    html += '<div class="ticket-row">';
+    html += '<label class="ticket-label">Volume (Lots)</label>';
+    html += '<div class="lot-group">';
+    html +=   '<button class="lot-btn" data-lot="0.01">0.01</button>';
+    html +=   '<button class="lot-btn" data-lot="0.10">0.10</button>';
+    html +=   '<button class="lot-btn active" data-lot="1.00">1.00</button>';
+    html +=   '<button class="lot-btn" data-lot="5.00">5.00</button>';
+    html +=   '<button class="lot-btn" data-lot="10.0">10.0</button>';
+    html += '</div>';
+    html += '<input type="number" class="input input-num lot-input" id="ticket-lots" value="1.00" min="0.01" max="50" step="0.01">';
+    html += '</div>';
 
+    /* Leverage */
+    html += '<div class="ticket-row">';
+    html += '<label class="ticket-label">Leverage</label>';
+    html += '<select class="input" id="ticket-leverage">';
+    var levs = [1, 10, 20, 30, 50, 100, 200, 500];
+    for (var l = 0; l < levs.length; l++) {
+      var s = levs[l] === state.leverage ? ' selected' : '';
+      html += '<option value="' + levs[l] + '"' + s + '>1:' + levs[l] + '</option>';
+    }
+    html += '</select>';
+    html += '</div>';
+
+    /* TP / SL */
+    html += '<div class="ticket-row ticket-tpsl">';
+    html += '<div style="flex:1"><label class="ticket-label">Take Profit</label><input type="number" class="input input-num" id="ticket-tp" placeholder="—" step="0.00001"></div>';
+    html += '<div style="flex:1"><label class="ticket-label">Stop Loss</label><input type="number" class="input input-num" id="ticket-sl" placeholder="—" step="0.00001"></div>';
+    html += '</div>';
+
+    /* Margin estimate */
+    html += '<div class="ticket-margin" id="ticket-margin-est">Est. Margin: —</div>';
+
+    /* Buy / Sell buttons */
+    html += '<div class="ticket-actions">';
+    html += '<button class="btn-buy" id="btn-buy">Buy</button>';
+    html += '<button class="btn-sell" id="btn-sell">Sell</button>';
+    html += '</div>';
+
+    html += '</div>'; /* end ticket-card */
+
+    /* ──  Mini Chart  ── */
+    html += '<div class="mini-chart-wrap">';
+    html += '<div class="mini-chart-header">';
+    html +=   '<span class="mini-chart-title" id="mini-chart-title">EUR/USD</span>';
+    html +=   '<div class="mini-chart-tfs">';
+    html +=     '<button class="mini-tab active" data-mini-tf="60">1H</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="240">4H</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="D">1D</button>';
+    html +=     '<button class="mini-tab" data-mini-tf="W">1W</button>';
+    html +=   '</div>';
+    html += '</div>';
+    html += '<div id="tv-mini-chart" class="tv-mini-container"><div class="tv-loading">Loading chart...</div></div>';
+    html += '</div>';
+
+    html += '</div>'; /* end trade-main */
+
+    /* ──  Positions / History Tabs  ── */
+    html += '<div class="tabs" id="trade-tabs">';
+    html +=   '<button class="tab active" data-tab="positions">Open Positions (' + positions.length + ')</button>';
+    html +=   '<button class="tab" data-tab="history">History (' + history.length + ')</button>';
+    html += '</div>';
+
+    html += '<div id="trade-positions-panel">';
     if (positions.length === 0) {
       html += '<div class="empty-state"><h3>No Open Positions</h3><p>Open a trade to see it here</p></div>';
     } else {
-      html += '<div class="position-grid">';
-
-      for (var i = 0; i < positions.length; i++) {
-        var pos = positions[i];
-        var currentPrice = FX.App.rates[pos.pair] || pos.currentPrice;
-        var pnl = FX.Trading.calculatePnL(pos, currentPrice);
-        var pnlClass = pnl >= 0 ? 'up' : 'down';
-        var sideClass = pos.side;
-
-        html += '<div class="position-card">' +
-          '<div class="pos-header">' +
-            '<span class="pos-pair">' + pos.pair + '</span>' +
-            '<span class="pos-side ' + sideClass + '">' + pos.side.toUpperCase() + '</span>' +
-          '</div>' +
-          '<div class="pos-details">' +
-            '<span><span class="pos-label">Size</span><span class="pos-value">' + pos.size.toLocaleString() + '</span></span>' +
-            '<span><span class="pos-label">Entry</span><span class="pos-value">' + FX.App.formatRate(pos.entryPrice) + '</span></span>' +
-            '<span><span class="pos-label">Current</span><span class="pos-value">' + FX.App.formatRate(currentPrice) + '</span></span>' +
-            '<span><span class="pos-label">P&amp;L</span><span class="pos-value ' + pnlClass + '">' + (pnl >= 0 ? '+' : '') + FX.App.formatUSD(pnl) + '</span></span>' +
-          '</div>' +
-          '<div class="pos-actions">' +
-            '<button class="btn btn-sm btn-danger pos-close" data-id="' + pos.id + '">Close</button>' +
-          '</div>' +
-        '</div>';
+      html += '<div class="table-wrap"><table><thead><tr>' +
+        '<th>Symbol</th><th>Type</th><th>Lots</th><th>Open</th><th>Price</th><th>S/L</th><th>T/P</th><th>Current</th><th>P&L</th><th></th>' +
+      '</tr></thead><tbody>';
+      for (var pi = 0; pi < positions.length; pi++) {
+        var p = positions[pi];
+        var cp = FX.App.rates[p.pair] || p.currentPrice;
+        var pnl = FX.Trading.calculatePnL(p, cp);
+        var pnlCls = pnl >= 0 ? 'up' : 'down';
+        html += '<tr>' +
+          '<td><span class="pair-name">' + p.pair + '</span></td>' +
+          '<td><span class="trade-side ' + p.side + '">' + p.side.toUpperCase() + '</span></td>' +
+          '<td class="num">' + p.lots.toFixed(2) + '</td>' +
+          '<td>' + new Date(p.timestamp).toLocaleTimeString() + '</td>' +
+          '<td class="num">' + FX.App.formatRate(p.entryPrice, p.pair) + '</td>' +
+          '<td class="num">' + (p.stopLoss ? FX.App.formatRate(p.stopLoss, p.pair) : '—') + '</td>' +
+          '<td class="num">' + (p.takeProfit ? FX.App.formatRate(p.takeProfit, p.pair) : '—') + '</td>' +
+          '<td class="num">' + FX.App.formatRate(cp, p.pair) + '</td>' +
+          '<td class="num ' + pnlCls + '">' + (pnl >= 0 ? '+' : '') + FX.App.formatUSD(pnl) + '</td>' +
+          '<td><button class="btn btn-sm btn-danger close-pos" data-id="' + p.id + '">X</button></td>' +
+        '</tr>';
       }
-
-      html += '</div>';
+      html += '</tbody></table></div>';
     }
-
     html += '</div>';
 
-    html += '<div class="card">' +
-      '<div class="card-title" style="margin-bottom:16px">Trade History</div>';
-
+    html += '<div id="trade-history-panel" style="display:none">';
     if (history.length === 0) {
       html += '<div class="empty-state"><h3>No Trade History</h3><p>Closed trades will appear here</p></div>';
     } else {
-      var sorted = history.slice().sort(function(a, b) {
-        return new Date(b.closeTimestamp) - new Date(a.closeTimestamp);
-      });
-
-      html += '<div class="table-wrap"><table>' +
-        '<thead><tr>' +
-          '<th>Date</th><th>Pair</th><th>Side</th><th>Size</th><th>Entry</th><th>Exit</th><th>Profit</th>' +
-        '</tr></thead><tbody>';
-
-      for (var i = 0; i < sorted.length; i++) {
-        var h = sorted[i];
-        var profitClass = h.profit >= 0 ? 'up' : 'down';
-
+      var sorted = history.slice().sort(function(a,b) { return new Date(b.closeTimestamp) - new Date(a.closeTimestamp); });
+      var totalPnl = 0;
+      for (var hi = 0; hi < sorted.length; hi++) totalPnl += sorted[hi].profit;
+      html += '<div style="margin-bottom:16px;display:flex;gap:24px">' +
+        '<span>Total Trades: <strong>' + sorted.length + '</strong></span>' +
+        '<span>Won: <strong class="up">' + sorted.filter(function(h){return h.profit >= 0;}).length + '</strong></span>' +
+        '<span>Lost: <strong class="down">' + sorted.filter(function(h){return h.profit < 0;}).length + '</strong></span>' +
+        '<span>Net P&L: <strong class="' + (totalPnl >= 0 ? 'up' : 'down') + '">' + (totalPnl >= 0 ? '+' : '') + FX.App.formatUSD(totalPnl) + '</strong></span>' +
+      '</div>';
+      html += '<div class="table-wrap"><table><thead><tr>' +
+        '<th>Date</th><th>Symbol</th><th>Type</th><th>Lots</th><th>Entry</th><th>Exit</th><th>Profit</th>' +
+      '</tr></thead><tbody>';
+      for (var hj = 0; hj < sorted.length; hj++) {
+        var h = sorted[hj];
+        var pc = h.profit >= 0 ? 'up' : 'down';
         html += '<tr>' +
           '<td>' + new Date(h.closeTimestamp).toLocaleDateString() + '</td>' +
-          '<td><span class="pair-name" style="font-size:13px">' + h.pair + '</span></td>' +
+          '<td><span class="pair-name">' + h.pair + '</span></td>' +
           '<td><span class="trade-side ' + h.side + '">' + h.side.toUpperCase() + '</span></td>' +
-          '<td class="num">' + h.size.toLocaleString() + '</td>' +
-          '<td class="num">' + FX.App.formatRate(h.entryPrice) + '</td>' +
-          '<td class="num">' + FX.App.formatRate(h.exitPrice) + '</td>' +
-          '<td class="num ' + profitClass + '">' + (h.profit >= 0 ? '+' : '') + FX.App.formatUSD(h.profit) + '</td>' +
+          '<td class="num">' + h.lots.toFixed(2) + '</td>' +
+          '<td class="num">' + FX.App.formatRate(h.entryPrice, h.pair) + '</td>' +
+          '<td class="num">' + FX.App.formatRate(h.exitPrice, h.pair) + '</td>' +
+          '<td class="num ' + pc + '">' + (h.profit >= 0 ? '+' : '') + FX.App.formatUSD(h.profit) + '</td>' +
         '</tr>';
       }
-
       html += '</tbody></table></div>';
     }
-
     html += '</div>';
 
     FX.App.render(html);
     bindEvents();
+    updateBidAsk();
+    updateMarginEstimate();
+    initMiniChart();
+  }
+
+  function statCard(label, value, cls) {
+    return '<div class="stat-card"><div class="stat-label">' + label + '</div><div class="stat-value' + (cls ? ' ' + cls : '') + '">' + value + '</div></div>';
+  }
+
+  function updateBidAsk() {
+    var pair = document.getElementById('ticket-pair');
+    if (!pair) return;
+    var p = pair.value;
+    var rate = FX.App.rates[p];
+    var bidEl = document.getElementById('ticket-bid');
+    var askEl = document.getElementById('ticket-ask');
+    var spreadEl = document.getElementById('ticket-spread');
+    if (rate != null) {
+      var spread = rate * 0.0002;
+      var bid = rate - spread;
+      var ask = rate + spread;
+      var fmt = FX.App.formatRate(rate, p);
+      var pips = (spread / (p.indexOf('JPY') !== -1 ? 0.01 : 0.0001)).toFixed(1);
+      bidEl.textContent = FX.App.formatRate(bid, p);
+      askEl.textContent = FX.App.formatRate(ask, p);
+      spreadEl.textContent = pips + ' pips';
+    } else {
+      bidEl.textContent = '—';
+      askEl.textContent = '—';
+      spreadEl.textContent = '—';
+    }
+  }
+
+  function updateMarginEstimate() {
+    var pairEl = document.getElementById('ticket-pair');
+    var lotsEl = document.getElementById('ticket-lots');
+    var levEl = document.getElementById('ticket-leverage');
+    var marginEl = document.getElementById('ticket-margin-est');
+    if (!pairEl || !lotsEl || !levEl || !marginEl) return;
+    var pair = pairEl.value;
+    var lots = parseFloat(lotsEl.value) || 0;
+    var lev = parseInt(levEl.value, 10) || 100;
+    var margin = FX.Trading.calculateMargin(pair, lots, lev);
+    var pip = FX.Trading.calculatePipValue(pair, lots);
+    marginEl.innerHTML = 'Est. Margin: <strong>' + FX.App.formatUSD(margin) + '</strong> &middot; Pip Value: <strong>' + FX.App.formatUSD(pip) + '</strong>';
+  }
+
+  function initMiniChart() {
+    if (typeof TradingView === 'undefined') return;
+    var pair = document.getElementById('ticket-pair');
+    if (!pair) return;
+    var symbol = 'FX:' + pair.value.replace('/', '');
+    var tf = document.querySelector('.mini-tab.active');
+    var interval = tf ? tf.getAttribute('data-mini-tf') : '60';
+
+    var container = document.getElementById('tv-mini-chart');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (miniChartWidget) {
+      try { miniChartWidget.remove(); } catch(e) {}
+      miniChartWidget = null;
+    }
+
+    miniChartWidget = new TradingView.widget({
+      container_id: 'tv-mini-chart',
+      symbol: symbol,
+      interval: interval,
+      timezone: 'exchange',
+      theme: 'dark',
+      style: '1',
+      locale: 'en',
+      toolbar_bg: '#161b24',
+      enable_publishing: false,
+      hide_side_toolbar: true,
+      hide_top_toolbar: true,
+      save_image: false,
+      allow_symbol_change: false,
+      studies: [],
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#161b24',
+      gridColor: '#222a38',
+      crosshair_color: '#8b95a5'
+    });
+  }
+
+  function destroyMiniChart() {
+    if (miniChartWidget) {
+      try { miniChartWidget.remove(); } catch(e) {}
+      miniChartWidget = null;
+    }
   }
 
   function bindEvents() {
-    var pairSelect = document.getElementById('trade-pair');
-    var priceDisplay = document.getElementById('trade-price');
-    var buyBtn = document.getElementById('trade-buy');
-    var sellBtn = document.getElementById('trade-sell');
-    var sizeInput = document.getElementById('trade-size');
+    var pairEl = document.getElementById('ticket-pair');
+    var lotsEl = document.getElementById('ticket-lots');
+    var levEl = document.getElementById('ticket-leverage');
 
-    if (pairSelect) {
-      pairSelect.addEventListener('change', function() {
-        var rate = FX.App.rates[this.value];
-        if (priceDisplay) {
-          priceDisplay.textContent = rate ? FX.App.formatRate(rate) : 'N/A';
-        }
+    /* Pair change → update prices + mini chart */
+    if (pairEl) {
+      pairEl.addEventListener('change', function() {
+        updateBidAsk();
+        updateMarginEstimate();
+        var titleEl = document.getElementById('mini-chart-title');
+        if (titleEl) titleEl.textContent = this.value;
+        initMiniChart();
       });
     }
 
+    /* Lot quick buttons */
+    var lotBtns = document.querySelectorAll('.lot-btn');
+    for (var lb = 0; lb < lotBtns.length; lb++) {
+      (function(btn) {
+        btn.addEventListener('click', function() {
+          var all = document.querySelectorAll('.lot-btn');
+          for (var a = 0; a < all.length; a++) all[a].classList.remove('active');
+          btn.classList.add('active');
+          if (lotsEl) {
+            lotsEl.value = btn.getAttribute('data-lot');
+            updateMarginEstimate();
+          }
+        });
+      })(lotBtns[lb]);
+    }
+
+    /* Manual lot input */
+    if (lotsEl) {
+      lotsEl.addEventListener('input', function() {
+        var all = document.querySelectorAll('.lot-btn');
+        for (var a = 0; a < all.length; a++) all[a].classList.remove('active');
+        updateMarginEstimate();
+      });
+    }
+
+    /* Leverage change */
+    if (levEl) {
+      levEl.addEventListener('change', function() {
+        FX.Trading.setLeverage(parseInt(this.value, 10));
+        updateMarginEstimate();
+      });
+    }
+
+    /* TP / SL updates */
+    var tpEl = document.getElementById('ticket-tp');
+    var slEl = document.getElementById('ticket-sl');
+    if (tpEl) tpEl.addEventListener('input', updateMarginEstimate);
+    if (slEl) slEl.addEventListener('input', updateMarginEstimate);
+
+    /* Buy / Sell */
+    var buyBtn = document.getElementById('btn-buy');
+    var sellBtn = document.getElementById('btn-sell');
+
     function openTrade(side) {
-      var pair = pairSelect ? pairSelect.value : FX.App.pairList[0].symbol;
-      var size = sizeInput ? parseInt(sizeInput.value, 10) : 1000;
-      var rate = FX.App.rates[pair];
+      var pair = pairEl ? pairEl.value : 'EUR/USD';
+      var lots = parseFloat(lotsEl ? lotsEl.value : 1);
+      var leverage = parseInt(levEl ? levEl.value : 100, 10);
+      var tp = tpEl ? parseFloat(tpEl.value) || null : null;
+      var sl = slEl ? parseFloat(slEl.value) || null : null;
 
-      if (!rate) {
-        showFeedback('Market price not available for ' + pair, 'error');
-        return;
-      }
-
-      if (!size || size < 100) {
-        showFeedback('Size must be at least 100 units', 'error');
-        return;
-      }
-
-      var result = FX.Trading.openPosition(pair, side, size, rate);
-      if (result) {
-        showFeedback((side === 'buy' ? 'Buy' : 'Sell') + ' order opened: ' + pair, 'success');
-        render();
+      var result = FX.Trading.openPosition(pair, side, lots, leverage, tp, sl);
+      if (result.error) {
+        showMsg(result.error, 'error');
       } else {
-        showFeedback('Insufficient balance for this trade', 'error');
+        showMsg((side === 'buy' ? 'Buy' : 'Sell') + ' ' + lots.toFixed(2) + ' lots ' + pair + ' @ market', 'ok');
+        render();
       }
     }
 
-    if (buyBtn) {
-      buyBtn.addEventListener('click', function() { openTrade('buy'); });
-    }
+    if (buyBtn) buyBtn.addEventListener('click', function() { openTrade('buy'); });
+    if (sellBtn) sellBtn.addEventListener('click', function() { openTrade('sell'); });
 
-    if (sellBtn) {
-      sellBtn.addEventListener('click', function() { openTrade('sell'); });
-    }
-
-    var closeButtons = document.querySelectorAll('.pos-close');
-    for (var i = 0; i < closeButtons.length; i++) {
+    /* Close positions */
+    var closeBtns = document.querySelectorAll('.close-pos');
+    for (var cb = 0; cb < closeBtns.length; cb++) {
       (function(btn) {
         btn.addEventListener('click', function() {
           var id = parseInt(btn.getAttribute('data-id'), 10);
-          var positions = FX.Trading.getPositions();
-          var position = null;
-          for (var j = 0; j < positions.length; j++) {
-            if (positions[j].id === id) {
-              position = positions[j];
-              break;
-            }
+          var result = FX.Trading.closePosition(id);
+          if (result.error) { showMsg(result.error, 'error'); }
+          else {
+            var pnl = result.record.profit;
+            showMsg('Closed ' + result.record.pair + ' | P&L: ' + (pnl >= 0 ? '+' : '') + FX.App.formatUSD(pnl), pnl >= 0 ? 'ok' : 'error');
+            render();
           }
-          if (!position) return;
-
-          var rate = FX.App.rates[position.pair];
-          if (!rate) {
-            showFeedback('Market price not available for ' + position.pair, 'error');
-            return;
-          }
-
-          FX.Trading.closePosition(id, rate);
-          showFeedback('Position closed', 'success');
-          render();
         });
-      })(closeButtons[i]);
+      })(closeBtns[cb]);
+    }
+
+    /* Tabs: Positions / History */
+    var tradeTabs = document.querySelectorAll('#trade-tabs .tab');
+    for (var tt = 0; tt < tradeTabs.length; tt++) {
+      (function(tab) {
+        tab.addEventListener('click', function() {
+          var all = document.querySelectorAll('#trade-tabs .tab');
+          for (var a = 0; a < all.length; a++) all[a].classList.remove('active');
+          tab.classList.add('active');
+          var target = tab.getAttribute('data-tab');
+          var posPanel = document.getElementById('trade-positions-panel');
+          var histPanel = document.getElementById('trade-history-panel');
+          if (posPanel) posPanel.style.display = target === 'positions' ? 'block' : 'none';
+          if (histPanel) histPanel.style.display = target === 'history' ? 'block' : 'none';
+        });
+      })(tradeTabs[tt]);
+    }
+
+    /* Mini chart timeframe tabs */
+    var miniTfs = document.querySelectorAll('.mini-tab');
+    for (var mt = 0; mt < miniTfs.length; mt++) {
+      (function(tab) {
+        tab.addEventListener('click', function() {
+          var all = document.querySelectorAll('.mini-tab');
+          for (var a = 0; a < all.length; a++) all[a].classList.remove('active');
+          tab.classList.add('active');
+          initMiniChart();
+        });
+      })(miniTfs[mt]);
     }
   }
 
   FX.TradingUI = {
-    render: render
+    render: render,
+    destroy: function() {
+      destroyMiniChart();
+    }
   };
 })();
