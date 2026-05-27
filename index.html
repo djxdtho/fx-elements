@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FX Elements — Forex Trading Platform</title>
+<meta name="description" content="FX Elements — real-time forex rates, currency converter, charts, watchlist, and paper trading simulator.">
+<meta property="og:title" content="FX Elements">
+<meta property="og:description" content="Forex trading platform with live rates, charts, and paper trading.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://djxdtho.github.io/fx-elements/">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="logo">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="#b8944c" opacity="0.15"/><text x="16" y="23" font-family="'Space Grotesk',monospace" font-weight="700" font-size="18" fill="#b8944c" text-anchor="middle">FX</text></svg>
+      <div><div class="logo-text">FX Elements</div><div class="logo-sub">by <span>AA Elements</span></div></div>
+    </div>
+    <nav class="nav-list" id="navList"></nav>
+  </aside>
+  <div class="main-area">
+    <header class="topbar">
+      <div class="page-title" id="pageTitle">Market Overview</div>
+      <div class="topbar-right">
+        <div class="balance-badge" id="balanceBadge">$0.00</div>
+        <div class="update-time" id="updateTime">—</div>
+      </div>
+    </header>
+    <div class="content" id="page-content">
+      <div class="spinner"></div>
+    </div>
+  </div>
+</div>
+<nav class="bottom-nav" id="bottomNav" role="navigation" aria-label="Mobile navigation">
+  <div class="bottom-nav-inner" id="bottomNavInner"></div>
+</nav>
+
+<script src="js/api.js"></script>
+<script src="js/trading.js"></script>
+<script src="js/app.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/converter.js"></script>
+<script src="js/watchlist.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/trading-ui.js"></script>
+</body>
+</html>
