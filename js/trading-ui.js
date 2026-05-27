@@ -436,98 +436,98 @@ window.FX = window.FX || {};
     var pair = pairEl.value;
     _lcCandles = lcGenCandles(pair, _lcIntervalMin, 200);
 
-    _miniLC = LightweightCharts.createChart(container, {
-      layout: {
-        background: { color: '#161b24' },
-        textColor: '#8b95a5',
-        fontFamily: 'Inter, sans-serif',
-        fontSize: 10
-      },
-      grid: {
-        vertLines: { color: '#222a38' },
-        horzLines: { color: '#222a38' }
-      },
+    /* Create 3 stacked Lightweight Charts: candles, RSI, MACD */
+    var mainDiv = document.createElement('div');
+    mainDiv.style.cssText = 'height:280px;flex-shrink:0';
+    var rsiDiv = document.createElement('div');
+    rsiDiv.style.cssText = 'height:70px;flex-shrink:0;border-top:1px solid #222a38';
+    var macdDiv = document.createElement('div');
+    macdDiv.style.cssText = 'height:90px;flex-shrink:0;border-top:1px solid #222a38';
+    container.appendChild(mainDiv);
+    container.appendChild(rsiDiv);
+    container.appendChild(macdDiv);
+
+    var lcOpts = {
+      localization: { locale: 'en-US' },
+      layout: { background: { color: '#161b24' }, textColor: '#8b95a5', fontFamily: 'Inter, sans-serif', fontSize: 10 },
+      grid: { vertLines: { color: '#222a38' }, horzLines: { color: '#222a38' } },
+      timeScale: { borderColor: '#333', timeVisible: true, secondsVisible: false },
+      handleScroll: false,
+      handleScale: false,
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    };
+
+    /* Main candle chart */
+    _miniLC = LightweightCharts.createChart(mainDiv, Object.assign({}, lcOpts, {
+      rightPriceScale: { borderColor: '#333', scaleMargins: { top: 0.08, bottom: 0.08 } },
       crosshair: {
         mode: LightweightCharts.CrosshairMode.Normal,
         vertLine: { color: '#8b95a5', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#36454f' },
         horzLine: { color: '#8b95a5', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#36454f' }
-      },
-      rightPriceScale: {
-        borderColor: '#333',
-        scaleMargins: { top: 0.05, bottom: 0.05 }
-      },
-      timeScale: {
-        borderColor: '#333',
-        timeVisible: true,
-        secondsVisible: false
-      },
-      handleScroll: false,
-      handleScale: false
-    });
-
-    /* Candlestick */
+      }
+    }));
     _lcMain = _miniLC.addCandlestickSeries({
       upColor: '#22c55e', downColor: '#ef4444',
       borderUpColor: '#22c55e', borderDownColor: '#ef4444',
       wickUpColor: '#22c55e', wickDownColor: '#ef4444'
     });
     _lcMain.setData(_lcCandles);
-
-    /* SMA 20 */
     _lcSMA = _miniLC.addLineSeries({
       color: '#f59e0b', lineWidth: 1,
       priceLineVisible: false, lastValueVisible: false
     });
     _lcSMA.setData(lcSMA(_lcCandles, 20));
 
-    /* RSI sub-pane */
-    _lcRSI = _miniLC.addLineSeries({
-      priceScaleId: 'rsi',
+    /* RSI chart */
+    _lcRSIChart = LightweightCharts.createChart(rsiDiv, Object.assign({}, lcOpts, {
+      rightPriceScale: { borderColor: '#333', scaleMargins: { top: 0.15, bottom: 0.15 }, entireTextOnly: true },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    }));
+    _lcRSISeries = _lcRSIChart.addLineSeries({
       color: '#a78bfa', lineWidth: 1,
       priceLineVisible: false, lastValueVisible: true
     });
-    _lcRSI.setData(lcRSI(_lcCandles, 14));
-    _miniLC.priceScale('rsi').applyOptions({
-      scaleMargins: { top: 0.72, bottom: 0 },
-      visible: true
-    });
+    _lcRSISeries.setData(lcRSI(_lcCandles, 14));
+    var rsi70 = _lcRSIChart.addLineSeries({ color: 'rgba(239,68,68,0.3)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    rsi70.setData([{ time: _lcCandles[0].time, value: 70 }, { time: _lcCandles[_lcCandles.length - 1].time, value: 70 }]);
+    var rsi30 = _lcRSIChart.addLineSeries({ color: 'rgba(34,197,94,0.3)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    rsi30.setData([{ time: _lcCandles[0].time, value: 30 }, { time: _lcCandles[_lcCandles.length - 1].time, value: 30 }]);
+    _lcRSIChart.timeScale().fitContent();
 
-    /* MACD sub-pane */
+    /* MACD chart */
     var macdData = lcMACD(_lcCandles);
-    _lcHist = _miniLC.addHistogramSeries({
-      priceScaleId: 'macd',
+    _lcMACDChart = LightweightCharts.createChart(macdDiv, Object.assign({}, lcOpts, {
+      rightPriceScale: { borderColor: '#333', scaleMargins: { top: 0.15, bottom: 0.15 }, entireTextOnly: true },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+    }));
+    _lcHistSeries = _lcMACDChart.addHistogramSeries({
       priceFormat: { type: 'price', precision: 5 },
       priceLineVisible: false
     });
-    _lcHist.setData(macdData.hist);
-    _lcMACD = _miniLC.addLineSeries({
-      priceScaleId: 'macd',
+    _lcHistSeries.setData(macdData.hist);
+    _lcMACDLineSeries = _lcMACDChart.addLineSeries({
       color: '#00d4ff', lineWidth: 1,
       priceLineVisible: false, lastValueVisible: false
     });
     var macdLineData = [];
-    for (var i = 0; i < macdData.macd.length; i++) {
-      macdLineData.push({ time: _lcCandles[i].time, value: macdData.macd[i] });
-    }
-    _lcMACD.setData(macdLineData);
-    _lcSignal = _miniLC.addLineSeries({
-      priceScaleId: 'macd',
+    for (var i = 0; i < macdData.macd.length; i++) macdLineData.push({ time: _lcCandles[i].time, value: macdData.macd[i] });
+    _lcMACDLineSeries.setData(macdLineData);
+    _lcSignalSeries = _lcMACDChart.addLineSeries({
       color: '#f59e0b', lineWidth: 1,
       priceLineVisible: false, lastValueVisible: false
     });
     var signalData = [];
-    for (var i = 0; i < macdData.signal.length; i++) {
-      signalData.push({ time: _lcCandles[i].time, value: macdData.signal[i] });
-    }
-    _lcSignal.setData(signalData);
-    _miniLC.priceScale('macd').applyOptions({
-      scaleMargins: { top: 0.86, bottom: 0 },
-      visible: true
-    });
+    for (var i = 0; i < macdData.signal.length; i++) signalData.push({ time: _lcCandles[i].time, value: macdData.signal[i] });
+    _lcSignalSeries.setData(signalData);
+    _lcMACDChart.timeScale().fitContent();
 
     drawPosLines();
     _miniLC.timeScale().fitContent();
   }
+
+  var _lcRSISeries = null;
+  var _lcMACDLineSeries = null;
+  var _lcSignalSeries = null;
 
   function updateLCData() {
     if (!_miniLC || !_lcMain || !_lcCandles.length) return;
@@ -541,7 +541,7 @@ window.FX = window.FX || {};
     if (rate < last.low) last.low = rate;
     _lcMain.update(last);
     _lcSMA.setData(lcSMA(_lcCandles, 20));
-    _lcRSI.setData(lcRSI(_lcCandles, 14));
+    if (_lcRSIChart && _lcRSISeries) _lcRSISeries.setData(lcRSI(_lcCandles, 14));
     var macdData = lcMACD(_lcCandles);
     var histData = [], macdLineData = [], signalData = [];
     for (var i = 0; i < macdData.hist.length; i++) {
@@ -549,19 +549,20 @@ window.FX = window.FX || {};
       macdLineData.push({ time: _lcCandles[i].time, value: macdData.macd[i] });
       signalData.push({ time: _lcCandles[i].time, value: macdData.signal[i] });
     }
-    _lcHist.setData(histData);
-    _lcMACD.setData(macdLineData);
-    _lcSignal.setData(signalData);
+    if (_lcHistSeries) _lcHistSeries.setData(histData);
+    if (_lcMACDLineSeries) _lcMACDLineSeries.setData(macdLineData);
+    if (_lcSignalSeries) _lcSignalSeries.setData(signalData);
     drawPosLines();
   }
 
   function destroyMiniChart() {
     clearPosLines();
-    if (_miniLC) {
-      try { _miniLC.remove(); } catch(e) {}
-    }
+    if (_miniLC) try { _miniLC.remove(); } catch(e) {}
+    if (_lcRSIChart) try { _lcRSIChart.remove(); } catch(e) {}
+    if (_lcMACDChart) try { _lcMACDChart.remove(); } catch(e) {}
     _miniLC = null; _lcMain = null; _lcSMA = null;
-    _lcRSI = null; _lcMACD = null; _lcSignal = null; _lcHist = null;
+    _lcRSIChart = null; _lcMACDChart = null; _lcHistSeries = null;
+    _lcRSISeries = null; _lcMACDLineSeries = null; _lcSignalSeries = null;
     _lcCandles = [];
   }
 
