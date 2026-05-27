@@ -66,7 +66,7 @@ window.FX = window.FX || {};
         if (data) {
           self.currencies = data;
         }
-        self._buildLayout();
+        self._initNavItems();
         self._setupRouting();
         self._setupNavigation();
         self.renderPage();
@@ -78,8 +78,35 @@ window.FX = window.FX || {};
       });
     },
 
+    _initNavItems: function() {
+      var items = this.navItems();
+      var sidebarNav = document.getElementById('navList');
+      if (sidebarNav && !sidebarNav.children.length) {
+        for (var i = 0; i < items.length; i++) {
+          var btn = document.createElement('button');
+          btn.className = 'nav-item';
+          btn.setAttribute('data-nav', items[i].route);
+          btn.innerHTML = items[i].icon + '<span class="nav-label">' + items[i].label + '</span>';
+          sidebarNav.appendChild(btn);
+        }
+      }
+      var bottomNav = document.getElementById('bottomNavInner');
+      if (bottomNav && !bottomNav.children.length) {
+        for (var j = 0; j < items.length; j++) {
+          var bBtn = document.createElement('button');
+          bBtn.className = 'bnav-item';
+          bBtn.setAttribute('data-nav', items[j].route);
+          bBtn.innerHTML = items[j].icon + '<span>' + items[j].label + '</span>';
+          bottomNav.appendChild(bBtn);
+        }
+      }
+    },
+
     _buildLayout: function() {
-      if (document.getElementById('page-content')) return;
+      if (document.getElementById('page-content')) {
+        this._initNavItems();
+        return;
+      }
 
       var sidebar = document.createElement('aside');
       sidebar.className = 'sidebar';
@@ -161,7 +188,7 @@ window.FX = window.FX || {};
 
     renderPage: function() {
       var route = this.activeRoute();
-      var pageTitle = document.getElementById('page-title');
+      var pageTitle = document.getElementById('page-title') || document.getElementById('pageTitle');
       if (pageTitle) {
         pageTitle.textContent = ROUTE_TITLES[route] || 'FX Elements';
       }
@@ -258,7 +285,7 @@ window.FX = window.FX || {};
 
       Promise.all(promises).then(function() {
         self.updateTime = new Date();
-        var timeEl = document.getElementById('update-time');
+        var timeEl = document.getElementById('update-time') || document.getElementById('updateTime');
         if (timeEl) {
           timeEl.textContent = 'Updated ' + self.updateTime.toLocaleTimeString();
         }
@@ -305,7 +332,7 @@ window.FX = window.FX || {};
     },
 
     _updateHeaderBalance: function() {
-      var badge = document.getElementById('header-balance');
+      var badge = document.getElementById('header-balance') || document.getElementById('balanceBadge');
       if (badge && typeof FX.Trading !== 'undefined') {
         var balance = FX.Trading.getBalance();
         badge.textContent = this.formatUSD(balance);
