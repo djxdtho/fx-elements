@@ -299,6 +299,7 @@ window.FX = window.FX || {};
 
     _startRateRefresh: function() {
       var self = this;
+      self.refreshRates();
       this._rateInterval = setInterval(function() {
         self.refreshRates();
       }, 30000);

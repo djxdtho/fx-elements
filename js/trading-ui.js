@@ -436,10 +436,13 @@ window.FX = window.FX || {};
 
   var _pricePoller = null;
 
-  function startPricePolling() {
+    function startPricePolling() {
     if (_pricePoller) clearInterval(_pricePoller);
+    var elapsed = 0;
     _pricePoller = setInterval(function() {
       updateBidAsk();
+      elapsed += 5;
+      if (elapsed <= 15) updateMarginEstimate();
     }, 5000);
   }
 
