@@ -692,7 +692,25 @@ window.FX = window.FX || {};
 
   var _pricePoller = null;
 
-    function startPricePolling() {
+    function updatePnL() {
+    var positions = FX.Trading.getPositions();
+    var rows = document.querySelectorAll('#trade-positions-panel tbody tr');
+    for (var i = 0; i < rows.length && i < positions.length; i++) {
+      var pos = positions[i];
+      var rate = FX.App.rates[pos.pair];
+      if (rate == null) continue;
+      var pnl = FX.Trading.calculatePnL(pos, rate);
+      var cls = pnl >= 0 ? 'up' : 'down';
+      var cells = rows[i].querySelectorAll('td');
+      if (cells.length >= 9) {
+        cells[7].textContent = FX.App.formatRate(rate, pos.pair);
+        cells[8].textContent = (pnl >= 0 ? '+' : '') + FX.App.formatUSD(pnl);
+        cells[8].className = 'num ' + cls;
+      }
+    }
+  }
+
+  function startPricePolling() {
     if (_pricePoller) clearInterval(_pricePoller);
     var elapsed = 0;
     _pricePoller = setInterval(function() {
@@ -700,6 +718,7 @@ window.FX = window.FX || {};
       elapsed += 5;
       if (elapsed <= 15) updateMarginEstimate();
       updateLCData();
+      updatePnL();
     }, 5000);
   }
 
